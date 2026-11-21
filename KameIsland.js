@@ -232,19 +232,40 @@ placePalm(-3.4, -1.0, {segments: 7, lean: 0.07});
 placePalm(3.8, -0.8, {segments: 7, lean: 0.06});
 placePalm(3.0, 1.6, {segments: 5, lean: 0.09,frondLength: 1.3});
 
-// Kame House (Jeremy composite object)
-const pink = new THREE.MeshStandardMaterial({color: 0xf49ac8, roughness: 0.9});
+// Kame House (jeremy composite object)
+const pink = new THREE.MeshStandardMaterial({
+  color: 0xf49ac8,
+  roughness: 0.9
+});
 
-const trim = new THREE.MeshStandardMaterial({color: 0xfff4e9, roughness: 0.8});
+const trim = new THREE.MeshStandardMaterial({
+  color: 0xfff4e9,
+  roughness: 0.8
+});
 
-const roofRed = new THREE.MeshStandardMaterial({color: 0xa92c37, roughness: 0.8, side: THREE.DoubleSide});
+const roofRed = new THREE.MeshStandardMaterial({
+  color: 0xa92c37,
+  roughness: 0.8,
+  side: THREE.DoubleSide
+});
 
-const greenDoor = new THREE.MeshStandardMaterial({color: 0x388451});
+const greenDoor = new THREE.MeshStandardMaterial({
+  color: 0x388451
+});
 
-const glass = new THREE.MeshStandardMaterial({color: 0x8dc4df, roughness: 0.25, metalness: 0.1});
+const glass = new THREE.MeshStandardMaterial({
+  color: 0x8dc4df,
+  roughness: 0.25,
+  metalness: 0.1
+});
 
-function part(parent, geometry, material, x, y, z, rx = 0, ry = 0, rz = 0) {
+function part(
+  parent, geometry, material,
+  x, y, z,
+  rx = 0, ry = 0, rz = 0
+) {
   const mesh = new THREE.Mesh(geometry, material);
+
   mesh.position.set(x, y, z);
   mesh.rotation.set(rx, ry, rz);
   parent.add(mesh);
@@ -252,103 +273,355 @@ function part(parent, geometry, material, x, y, z, rx = 0, ry = 0, rz = 0) {
   return mesh;
 }
 
+let houseOpen = false;
+let roofHeight = 0;
+let kameRoof;
+let kameFront;
+
+// Kame House with redesigned interior
 function makeKameHouse() {
   const house = new THREE.Group();
+  const shell = new THREE.Group();
+  const interior = new THREE.Group();
+  house.add(shell, interior);
 
-  // Walls
-  part(house, new THREE.BoxGeometry(3, 2.05, 2.65), pink, 0, 1.12, 0);
+  // Larger footprint, while keeping the original 1.8x house scale.
+  shell.scale.setScalar(1.8);
+  interior.scale.setScalar(1.8);
 
-  // Foundation
-  part(house, new THREE.BoxGeometry(3.2, 0.15, 2.9), trim, 0, 0.12, 0);
+  const mat = (color, extra = {}) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
+  const wood = mat(0xc9824e);
+  const woodAlt = mat(0xd79560);
+  const woodSeam = mat(0x9b5b36);
+  const insidePink = mat(0xd47e96, { side: THREE.DoubleSide });
+  const red = mat(0x9b202a);
+  const redLight = mat(0xb62f39);
+  const rug = mat(0xcac5c0);
+  const black = mat(0x242326);
+  const white = mat(0xf2ede5);
+  const darkWood = mat(0x554037);
+  const stone = mat(0xc4bcb6);
+  const steel = mat(0xb9c4c8, { metalness: 0.45, roughness: 0.4 });
+  const fridgeGreen = mat(0x28563e);
+  const tvBlue = mat(0x213b4d, { roughness: 0.25 });
+  const leafGreen = mat(0x348348);
+  const potBrown = mat(0x8a5740);
 
-  // Roof
-  const roofWidth = Math.sqrt(1.7 ** 2 + 1.10 ** 2);
+  const box = (parent, w, h, d, material, x, y, z) =>
+    part(parent, new THREE.BoxGeometry(w, h, d), material, x, y, z);
 
-  part(house, new THREE.BoxGeometry(roofWidth, 0.13, 3.05), roofRed, -0.85, 2.64, 0, 0, 0, Math.atan2(1.10, 1.7));
+  // Main dimensions: x = -2.4 to 2.4; z = -2.05 to 2.05.
+  // The floor is shared by the living room and the smaller rooms.
+  box(shell, 5.02, 0.23, 4.32, trim, 0, 0.13, 0);
+  box(shell, 4.78, 0.055, 4.08, wood, 0, 0.27, 0);
+  for (let i = 0; i < 27; i++) {
+    const z = -1.98 + i * 0.15;
+    box(shell, 4.72, 0.008, 0.143, i % 4 === 0 ? woodAlt : wood,
+      0, 0.303, z);
+    for (let j = 0; j < 6; j++) {
+      const x = -2.25 + j * 0.76 + (i % 2) * 0.38;
+      if (x < 2.3) box(shell, 0.009, 0.004, 0.142,
+        woodSeam, x, 0.311, z);
+    }
+  }
 
-  part(house, new THREE.BoxGeometry(roofWidth, 0.13, 3.05), roofRed, 0.85, 2.64, 0, 0, 0, -Math.atan2(1.10, 1.7));
+  // Exterior walls, with warm pink inner faces.
+  for (const x of [-2.4, 2.4]) {
+    box(shell, 0.12, 2.36, 4.12, pink, x, 1.44, 0);
+    box(shell, 0.014, 2.22, 3.98, insidePink,
+      x - Math.sign(x) * 0.068, 1.44, 0);
+  }
+  box(shell, 4.8, 2.36, 0.12, pink, 0, 1.44, -2.05);
+  box(shell, 4.62, 2.22, 0.014, insidePink, 0, 1.44, -1.982);
 
-  // Triangular front and rear gables
-  const gable = new THREE.BufferGeometry();
+  // Front wall is hidden temporarily when A opens the roof for a clear view.
+  kameFront = new THREE.Group();
+  shell.add(kameFront);
+  box(kameFront, 4.8, 2.36, 0.12, pink, 0, 1.44, 2.05);
+  box(kameFront, 4.62, 2.22, 0.014, insidePink, 0, 1.44, 1.982);
+  box(kameFront, 0.84, 1.68, 0.075, greenDoor, 0, 1.16, 2.13);
+  part(kameFront, new THREE.SphereGeometry(0.045, 12, 8),
+    trim, 0.29, 1.16, 2.19);
 
-  gable.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute([
-      -1.5, 2.14, 1.335,
-       1.5, 2.14, 1.335,
-       0, 3.23, 1.335,
+  // Front windows and their cross-shaped white frames.
+  for (const x of [-1.48, 1.48]) {
+    box(kameFront, 1.02, 1.12, 0.08, white, x, 1.52, 2.14);
+    box(kameFront, 0.89, 0.99, 0.085, glass, x, 1.52, 2.19);
+    box(kameFront, 0.055, 1.04, 0.095, white, x, 1.52, 2.25);
+    box(kameFront, 0.96, 0.055, 0.095, white, x, 1.52, 2.25);
+  }
 
-       1.5, 2.14, -1.335,
-      -1.5, 2.14, -1.335,
-       0, 3.23, -1.335
-    ], 3)
+  // Exterior side windows.
+  for (const side of [-1, 1]) {
+    box(shell, 0.085, 1.10, 1.20, white, side * 2.48, 1.60, 0.38);
+    box(shell, 0.09, 0.98, 1.08, glass, side * 2.54, 1.60, 0.38);
+    box(shell, 0.10, 0.055, 1.12, white, side * 2.60, 1.60, 0.38);
+  }
+  box(shell, 1.25, 0.13, 0.62, trim, 0, 0.16, 2.42);
+
+  // Roof: the red panels and both filled-in pink triangles move together.
+  kameRoof = new THREE.Group();
+  shell.add(kameRoof);
+  const halfSpan = 2.62;
+  const rise = 1.10;
+  const roofAngle = Math.atan2(rise, halfSpan);
+  const roofLength = Math.hypot(halfSpan, rise);
+  for (const side of [-1, 1]) {
+    part(kameRoof,
+      new THREE.BoxGeometry(roofLength, 0.14, 4.56),
+      roofRed, side * halfSpan / 2, 3.16, 0,
+      0, 0, -side * roofAngle);
+  }
+  for (const z of [-2.065, 2.065]) {
+    const gable = new THREE.Shape();
+    gable.moveTo(-2.4, 2.62);
+    gable.lineTo(2.4, 2.62);
+    gable.lineTo(0, 3.72);
+    gable.closePath();
+    const gableMat = pink.clone();
+    gableMat.side = THREE.DoubleSide;
+    part(kameRoof, new THREE.ShapeGeometry(gable), gableMat, 0, 0, z);
+  }
+  box(kameRoof, 0.17, 0.13, 4.58, roofRed, 0, 3.72, 0);
+  box(kameRoof, 1.55, 0.14, 0.95, roofRed, 0, 2.08, 2.48);
+  for (const x of [-0.63, 0.63]) {
+    part(shell, new THREE.CylinderGeometry(0.052, 0.052, 1.70, 10),
+      trim, x, 1.08, 2.76);
+  }
+
+  // REFERENCE LAYOUT: kitchen on back-left, living room in the middle,
+  // closet on the back wall, and separate rooms on the back-right.
+
+  // Kitchen counter, upper cabinets, and big window above the sink.
+  box(interior, 1.88, 0.72, 0.48, darkWood, -1.34, 0.68, -1.72);
+  box(interior, 1.98, 0.075, 0.58, stone, -1.34, 1.08, -1.72);
+  for (const x of [-2.04, -1.56, -1.08, -0.60]) {
+    box(interior, 0.42, 0.55, 0.025, woodAlt, x, 0.70, -1.425);
+    part(interior, new THREE.SphereGeometry(0.026, 8, 6),
+      steel, x + 0.12, 0.70, -1.405);
+  }
+  box(interior, 1.45, 0.98, 0.055, white, -1.37, 1.90, -1.94);
+  box(interior, 1.31, 0.84, 0.06, glass, -1.37, 1.90, -1.90);
+  box(interior, 0.045, 0.89, 0.08, white, -1.37, 1.90, -1.85);
+  box(interior, 1.36, 0.045, 0.08, white, -1.37, 1.90, -1.85);
+  box(interior, 0.40, 0.025, 0.31, steel, -1.60, 1.13, -1.70);
+  part(interior, new THREE.CylinderGeometry(0.02, 0.02, 0.22, 10),
+    steel, -1.61, 1.26, -1.88);
+  box(interior, 0.18, 0.025, 0.03, steel, -1.54, 1.37, -1.88);
+  box(interior, 0.38, 0.03, 0.36, black, -0.82, 1.13, -1.69);
+  for (const x of [-0.93, -0.72]) {
+    for (const z of [-1.80, -1.59]) {
+      part(interior, new THREE.TorusGeometry(0.055, 0.008, 6, 12),
+        steel, x, 1.154, z, Math.PI / 2);
+    }
+  }
+
+  // Tall green refrigerator beside the kitchen.
+  box(interior, 0.58, 1.66, 0.62, fridgeGreen, -0.08, 1.16, -1.68);
+  box(interior, 0.035, 0.40, 0.04, steel, 0.24, 1.40, -1.34);
+  box(interior, 0.54, 0.035, 0.04, darkWood, -0.08, 1.53, -1.35);
+
+  // White double closet doors on the back wall.
+  box(interior, 1.10, 1.76, 0.06, white, 1.00, 1.30, -1.93);
+  box(interior, 0.035, 1.76, 0.08, trim, 1.00, 1.30, -1.88);
+  for (const x of [0.73, 1.27]) {
+    for (let y = 0.68; y < 2.02; y += 0.13) {
+      box(interior, 0.42, 0.022, 0.075, trim, x, y, -1.87);
+    }
+  }
+
+  // Small rooms behind the living room, with actual dividing walls.
+  // Two openings are intentionally left clear for access.
+  box(interior, 0.10, 2.10, 0.48, insidePink, 1.62, 1.36, -1.75);
+  box(interior, 0.10, 2.10, 0.37, insidePink, 1.62, 1.36, -0.65);
+  // Lintel bridges the opening without blocking the doorway.
+  box(interior, 0.12, 0.27, 0.75, insidePink, 1.62, 2.275, -1.15);
+  box(interior, 0.82, 2.10, 0.10, insidePink, 2.00, 1.36, -0.46);
+  // Trim the doorway edges.
+  for (const z of [-1.50, -0.84]) {
+    box(interior, 0.15, 1.80, 0.055, white, 1.62, 1.23, z);
+  }
+  // First room on right: bedroom
+  box(interior, 0.72, 0.18, 1.16, darkWood, 2.00, 0.44, -1.20);
+  box(interior, 0.66, 0.15, 1.06, white, 2.00, 0.59, -1.20);
+  box(interior, 0.64, 0.045, 0.62, tvBlue, 2.00, 0.69, -0.98);
+  box(interior, 0.48, 0.09, 0.23, white, 2.00, 0.72, -1.62);
+  box(interior, 0.74, 0.55, 0.10, darkWood, 2.00, 0.70, -1.82);
+  // Slim wall shelf leaves floor clear.
+  box(interior, 0.35, 0.045, 0.18, woodAlt, 2.06, 1.10, -0.53);
+
+  // Side room on the right, separated by a wall with a doorway gap.
+  box(interior, 0.10, 2.10, 0.65, insidePink, 1.52, 1.36, 0.40);
+  box(interior, 0.10, 2.10, 0.28, insidePink, 1.52, 1.36, 1.88);
+  box(interior, 0.12, 0.27, 0.72, insidePink, 1.52, 2.275, 1.20);
+  for (const z of [0.76, 1.74]) {
+    box(interior, 0.15, 1.80, 0.055, white, 1.52, 1.23, z);
+  }
+  // Solid back wall for the staircase room, closing off the rear opening.
+  // This wall is part of Kame House only; the doorway on the left stays open.
+  box(interior, 0.88, 2.10, 0.10, insidePink, 1.98, 1.36, 0.03);
+  box(interior, 0.88, 0.075, 0.12, white, 1.98, 0.39, 0.03);
+
+  // Second room on the right: neat wooden staircase instead of bathroom.
+  // Steps climb from the front of the room toward the back wall.
+  const stairWood = mat(0xb47a4e);
+  const stairDark = mat(0x6e4931);
+  const stairRail = mat(0xf7eee2);
+  const stairStartZ = 1.78;
+  const stairWidth = 0.66;
+  const stepDepth = 0.16;
+  const stepRise = 0.19;
+  for (let i = 0; i < 8; i++) {
+    const z = stairStartZ - i * stepDepth;
+    const top = 0.34 + (i + 1) * stepRise;
+    // Solid riser and separate wood tread, for clearly visible stairs.
+    box(interior, stairWidth, (i + 1) * stepRise, stepDepth,
+      stairWood, 2.02, 0.34 + (i + 1) * stepRise / 2, z);
+    box(interior, stairWidth + 0.04, 0.055, stepDepth + 0.025,
+      woodAlt, 2.02, top + 0.027, z);
+    // Dark nosing on each step.
+    box(interior, stairWidth + 0.045, 0.025, 0.025,
+      stairDark, 2.02, top + 0.055, z + stepDepth / 2);
+  }
+  // Small upper landing (visual staircase; no second floor is modeled).
+  box(interior, 0.72, 0.12, 0.25, stairWood, 2.02, 1.92, 0.48);
+  // Rail posts along the open side of the stairs.
+  for (const i of [0, 2, 4, 6, 7]) {
+    const z = stairStartZ - i * stepDepth;
+    const top = 0.34 + (i + 1) * stepRise;
+    box(interior, 0.045, 0.55, 0.045, stairRail,
+      1.65, top + 0.30, z);
+  }
+  // Sloping handrail follows the stairs upward.
+  const railStart = new THREE.Vector3(1.65, 1.05, 1.78);
+  const railEnd = new THREE.Vector3(1.65, 2.38, 0.66);
+  const railVec = railEnd.clone().sub(railStart);
+  const handrail = new THREE.Mesh(
+    new THREE.BoxGeometry(0.055, railVec.length(), 0.055), stairRail
   );
+  handrail.position.copy(railStart).add(railEnd).multiplyScalar(0.5);
+  handrail.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0), railVec.normalize()
+  );
+  interior.add(handrail);
 
-  gable.computeVertexNormals();
-  part(house, gable, pink, 0, 0, 0);
+  // Large light-gray rug in the middle of the living room.
+  box(interior, 2.48, 0.025, 1.72, rug, -0.34, 0.335, 0.56);
 
-  // Horizontal siding
-  for (let y = 0.37; y < 2.08; y += 0.22) {
-    part(house, new THREE.BoxGeometry(3.02, 0.025, 0.025), trim, 0, y, 1.335);
-    part(house, new THREE.BoxGeometry(0.025, 0.025, 2.65), trim, -1.51, y, 0);
+  // Red L-shaped couch, low like the reference.
+  // Main long section follows the back edge of the rug.
+  box(interior, 2.14, 0.25, 0.43, red, -0.47, 0.49, -0.05);
+  box(interior, 0.44, 0.25, 1.32, red, 0.38, 0.49, 0.40);
+  box(interior, 2.14, 0.32, 0.14, redLight, -0.47, 0.76, -0.24);
+  box(interior, 0.14, 0.32, 1.30, redLight, 0.57, 0.76, 0.40);
+  for (const x of [-1.26, -0.74, -0.22]) {
+    box(interior, 0.47, 0.12, 0.35, redLight, x, 0.66, -0.02);
+  }
+  for (const z of [0.26, 0.69]) {
+    box(interior, 0.36, 0.12, 0.39, redLight, 0.37, 0.66, z);
   }
 
-  // Front door
-  part(house, new THREE.BoxGeometry(0.72, 1.5, 0.07), greenDoor, 0.86, 0.92, 1.38);
-
-  // Doorknob
-  part(house, new THREE.SphereGeometry(0.045, 10, 8), trim, 1.11, 0.93, 1.44);
-
-  // Porch
-  part(house, new THREE.BoxGeometry(1.2, 0.12, 0.85), trim, 0.84, 0.13, 1.75);
-
-  // Porch roof
-  part(house,new THREE.BoxGeometry(1.4, 0.14, 0.92), roofRed, 0.82, 1.88, 1.72);
-
-  // Porch columns
-  for (const x of [0.24, 1.4]) {
-    part(house, new THREE.CylinderGeometry(0.045, 0.045, 1.5, 10), trim, x, 0.94, 2.03);
+  // Simple black square coffee table.
+  box(interior, 0.59, 0.06, 0.59, black, -0.55, 0.56, 0.82);
+  for (const x of [-0.78, -0.32]) {
+    for (const z of [0.59, 1.05]) {
+      box(interior, 0.045, 0.20, 0.045, black, x, 0.43, z);
+    }
   }
 
-  // Front window
-  part(house,new THREE.BoxGeometry(1.05, 0.87, 0.06), trim, -0.63, 1.25, 1.39);
-  part(house, new THREE.BoxGeometry(0.85, 0.68, 0.07), glass, -0.63, 1.25, 1.44);
-
-  // Window crossbars
-  part(house, new THREE.BoxGeometry(0.065, 0.72, 0.09), trim, -0.63, 1.25, 1.49);
-  part(house, new THREE.BoxGeometry(0.91, 0.06, 0.09), trim, -0.63, 1.25, 1.49);
-
-  // Shutters
-  for (const x of [-1.28, 0.02]) {part(house, new THREE.BoxGeometry(0.23, 0.87, 0.08), trim, x, 1.25, 1.44);
+  // Living room TV on the left wall, facing the sofa.
+  box(interior, 0.12, 0.82, 1.16, black, -2.18, 1.50, 0.80);
+  box(interior, 0.018, 0.72, 1.06, tvBlue, -2.105, 1.50, 0.80);
+  box(interior, 0.34, 0.40, 1.26, darkWood, -2.13, 0.54, 0.80);
+  for (const z of [0.49, 1.10]) {
+    box(interior, 0.025, 0.27, 0.50, woodAlt, -1.94, 0.54, z);
   }
 
-  // Side window
-  part(house, new THREE.BoxGeometry(0.07, 0.78, 0.82), trim, -1.54, 1.25, 0);
-  part(house, new THREE.BoxGeometry(0.08, 0.61, 0.66), glass, -1.59, 1.25, 0);
-  part(house, new THREE.BoxGeometry(0.09, 0.07, 0.7), trim, -1.64, 1.25, 0);
+  // Indoor plant near the kitchen.
+  part(interior, new THREE.CylinderGeometry(0.18, 0.13, 0.32, 12),
+    potBrown, -2.10, 0.49, -0.77);
+  for (let i = 0; i < 11; i++) {
+    const a = i / 11 * Math.PI * 2;
+    const leaf = part(interior, new THREE.SphereGeometry(0.16, 8, 6),
+      leafGreen,
+      -2.10 + Math.cos(a) * 0.15,
+      0.79 + (i % 3) * 0.10,
+      -0.77 + Math.sin(a) * 0.15);
+    leaf.scale.set(0.75, 1.4, 0.65);
+  }
+
+  // Clean finishing details: continuous baseboards, crown molding,
+  // wall art, kitchen backsplash and individual cabinet hardware.
+  for (const z of [-1.96, 1.96]) {
+    box(interior, 4.62, 0.075, 0.035, white, 0, 0.39, z);
+    box(interior, 4.62, 0.055, 0.045, white, 0, 2.57, z);
+  }
+  for (const x of [-2.32, 2.32]) {
+    box(interior, 0.035, 0.075, 3.90, white, x, 0.39, 0);
+    box(interior, 0.045, 0.055, 3.90, white, x, 2.57, 0);
+  }
+  // Backsplash above the kitchen counter.
+  box(interior, 1.86, 0.24, 0.025, white, -1.34, 1.24, -1.94);
+  // Kitchen upper cabinets either side of the window.
+  box(interior, 0.34, 0.55, 0.26, darkWood, -2.16, 2.04, -1.78);
+  box(interior, 0.34, 0.55, 0.26, darkWood, -0.55, 2.04, -1.78);
+  for (const x of [-2.16, -0.55]) {
+    box(interior, 0.25, 0.43, 0.018, woodAlt, x, 2.04, -1.63);
+    box(interior, 0.07, 0.018, 0.025, steel, x + 0.08, 2.04, -1.61);
+  }
+  // A framed picture on the rear wall near the closet.
+  box(interior, 0.38, 0.48, 0.045, darkWood, 1.79, 1.94, -1.93);
+  box(interior, 0.30, 0.40, 0.05, leafGreen, 1.79, 1.94, -1.90);
+  // Sofa armrests and subtle cushion seams.
+  box(interior, 0.14, 0.36, 0.43, red, -1.57, 0.67, -0.05);
+  box(interior, 0.44, 0.35, 0.14, red, 0.38, 0.67, 1.04);
+  // Rug border and coffee-table lower shelf.
+  box(interior, 2.36, 0.005, 1.60, white, -0.34, 0.351, 0.56);
+  box(interior, 2.22, 0.007, 1.46, rug, -0.34, 0.356, 0.56);
+  box(interior, 0.51, 0.028, 0.51, darkWood, -0.55, 0.39, 0.82);
+  const interiorLight = new THREE.PointLight(0xffe5d3, 1.8, 10);
+  interiorLight.position.set(0, 2.3, 0);
+  interior.add(interiorLight);
 
   return house;
 }
 
 const kameHouse = makeKameHouse();
 
-// Place the house so lowest corner touches the ground
+// House placement
 function lowestGroundUnder(cx, cz, xs, zs) {
   let min = Infinity;
+
   for (const dx of xs) {
     for (const dz of zs) {
-      min = Math.min(min, groundHeightAt(cx + dx, cz + dz));
+      min = Math.min(
+        min,
+        groundHeightAt(cx + dx, cz + dz)
+      );
     }
   }
+
   return min;
 }
 
-const HOUSE_X = 0, HOUSE_Z = -0.45;
-const FOUNDATION_BOTTOM = 0.045;
+const HOUSE_X = 0;
+const HOUSE_Z = -0.45;
 
-const groundY = lowestGroundUnder( HOUSE_X, HOUSE_Z, [-1.6, 0, 1.6], [-1.45, 0, 1.45, 2.2]);
+const FOUNDATION_BOTTOM = 0.045 * 1.8;
 
-kameHouse.position.set(HOUSE_X, groundY - FOUNDATION_BOTTOM, HOUSE_Z);
+const groundY = lowestGroundUnder(
+  HOUSE_X,
+  HOUSE_Z,
+  [-2.85, 0, 2.85],
+  [-2.6, 0, 2.6]
+);
+
+kameHouse.position.set(
+  HOUSE_X,
+  groundY - FOUNDATION_BOTTOM,
+  HOUSE_Z
+);
 
 scene.add(kameHouse);
 
@@ -573,9 +846,19 @@ function onResize() {
 
 window.addEventListener("resize", onResize);
 
+// Kame House roof control: press A to open or close.
+window.addEventListener("keydown", (event) => {
+  if (event.code === "KeyA" && !event.repeat) houseOpen = !houseOpen;
+});
+
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  updateWater(clock.getElapsedTime());
+  const delta = clock.getDelta();
+  const target = houseOpen ? 4.5 : 0;
+  roofHeight += (target - roofHeight) * Math.min(1, delta * 2.3);
+  kameRoof.position.y = roofHeight;
+  kameFront.visible = roofHeight < 0.3;
+  updateWater(clock.elapsedTime);
   controls.update();
   renderer.render(scene, camera);
 });
