@@ -1,14 +1,19 @@
 // Emmanuel Ketsri & Jeremey Sarkodie
-// AI Statement: I completed this assignment without using generative AI tools. -->
+// AI Statement: I completed this assignment without using generative AI tools.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { FontLoader } from "three/addons/loaders/FontLoader.js";
+import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
 
 // Scene, camera, renderer, and controls
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fd3ff);
+scene.fog = new THREE.Fog(0x8fd3ff, 130, 300); // far ocean fades into sky
 
-const FRUSTUM = 22;
+const WORLD_SCALE = 2.8;
+
+const FRUSTUM = 22 * WORLD_SCALE;
 let aspect = window.innerWidth / window.innerHeight;
 
 const camera = new THREE.OrthographicCamera(
@@ -20,26 +25,45 @@ const camera = new THREE.OrthographicCamera(
   500
 );
 
-camera.position.set(20, 14, 22);
-camera.lookAt(0, 0.5, 0);
+camera.position.set(20, 14, 22).multiplyScalar(WORLD_SCALE);
+camera.lookAt(0, 0.5 * WORLD_SCALE, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft shadow edges
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.5, 0);
+controls.target.set(0, 0.5 * WORLD_SCALE, 0);
 controls.maxPolarAngle = Math.PI / 2 - 0.05; // keep above water
 controls.minZoom = 0.6; // keep ocean edge out of view
 controls.maxZoom = 4;
 controls.update();
 
 // Lighting
-scene.add(new THREE.HemisphereLight(0xdff4ff, 0x3a6b4a, 1.1));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(10, 20, 8);
+scene.add(new THREE.HemisphereLight(0xcfe9ff, 0xe0cfa8, 0.9));
+
+// Sun (main light, casts shadows)
+const sun = new THREE.DirectionalLight(0xfff0d9, 2.0);
+sun.position.set(10, 20, 8).normalize().multiplyScalar(60);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -34;
+sun.shadow.camera.right = 34;
+sun.shadow.camera.top = 34;
+sun.shadow.camera.bottom = -34;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 150;
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.05;
 scene.add(sun);
+
+// Rim light (from behind, separates shapes from the background)
+const rimLight = new THREE.DirectionalLight(0x9ec5ff, 0.45);
+rimLight.position.set(-30, 20, -25);
+scene.add(rimLight);
 
 // Island (Emmanuel's polygonal mesh object)
 const ISLAND_RX = 7;
@@ -132,6 +156,8 @@ const island = new THREE.Mesh(
   new THREE.MeshStandardMaterial({vertexColors: true, flatShading: true, roughness: 0.95})
 );
 
+island.scale.setScalar(WORLD_SCALE);
+island.updateMatrixWorld(); // so the raycasts below see the scaled island
 scene.add(island);
 
 // Palm trees (Emmanuel's composite object)
@@ -214,14 +240,18 @@ const raycaster = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
 
 function groundHeightAt(x, z) {
-  raycaster.set(new THREE.Vector3(x, 10, z), DOWN);
+  raycaster.set(new THREE.Vector3(x, 100, z), DOWN);
   const hit = raycaster.intersectObject(island);
   return hit.length ? hit[0].point.y : 0;
 }
 
+// x, z are in the original island units
 function placePalm(x, z, opts) {
   const tree = makePalmTree(opts);
-  tree.position.set(x, groundHeightAt(x, z) - 0.05, z);
+  const wx = x * WORLD_SCALE;
+  const wz = z * WORLD_SCALE;
+  tree.scale.setScalar(WORLD_SCALE);
+  tree.position.set(wx, groundHeightAt(wx, wz) - 0.05 * WORLD_SCALE, wz);
   tree.rotation.y = Math.atan2(z, -x); // tree leans away from island center
   scene.add(tree);
 
@@ -232,40 +262,31 @@ placePalm(-3.4, -1.0, {segments: 7, lean: 0.07});
 placePalm(3.8, -0.8, {segments: 7, lean: 0.06});
 placePalm(3.0, 1.6, {segments: 5, lean: 0.09,frondLength: 1.3});
 
-// Kame House (jeremy composite object)
-const pink = new THREE.MeshStandardMaterial({
-  color: 0xf49ac8,
-  roughness: 0.9
-});
+// Kame House (Jeremey's composite object)
+const pink = new THREE.MeshStandardMaterial({color: 0xf7a3cf, roughness: 0.9});
 
-const trim = new THREE.MeshStandardMaterial({
-  color: 0xfff4e9,
-  roughness: 0.8
-});
+const sidingPink = new THREE.MeshStandardMaterial({color: 0xd987b3, roughness: 0.9});
 
-const roofRed = new THREE.MeshStandardMaterial({
-  color: 0xa92c37,
-  roughness: 0.8,
-  side: THREE.DoubleSide
-});
+const signRed = new THREE.MeshStandardMaterial({color: 0xd8324a, roughness: 0.45});
 
-const greenDoor = new THREE.MeshStandardMaterial({
-  color: 0x388451
-});
+// Weathervane (metallic, semi-gloss)
+const vaneMetal = new THREE.MeshStandardMaterial({color: 0xf4f1ea, metalness: 0.3, roughness: 0.4});
 
-const glass = new THREE.MeshStandardMaterial({
-  color: 0x8dc4df,
-  roughness: 0.25,
-  metalness: 0.1
+const trim = new THREE.MeshStandardMaterial({color: 0xfff4e9, roughness: 0.8});
+
+const roofRed = new THREE.MeshStandardMaterial({color: 0xa92c37, roughness: 0.8, side: THREE.DoubleSide});
+
+const greenDoor = new THREE.MeshStandardMaterial({color: 0x388451});
+
+// Glass (smooth, clear-coated and see-through)
+const glass = new THREE.MeshPhysicalMaterial({
+  color: 0x9fd3ea, roughness: 0.05, metalness: 0.0,
+  clearcoat: 1.0, transparent: true, opacity: 0.55
 });
 
 function part(
-  parent, geometry, material,
-  x, y, z,
-  rx = 0, ry = 0, rz = 0
-) {
+  parent, geometry, material, x, y, z, rx = 0, ry = 0, rz = 0) {
   const mesh = new THREE.Mesh(geometry, material);
-
   mesh.position.set(x, y, z);
   mesh.rotation.set(rx, ry, rz);
   parent.add(mesh);
@@ -277,15 +298,16 @@ let houseOpen = false;
 let roofHeight = 0;
 let kameRoof;
 let kameFront;
+let kameVane;        // weathervane group
+let kameVaneSpinner; // the arrow that turns in the wind
 
-// Kame House with redesigned interior
+// Kame House + interior
 function makeKameHouse() {
   const house = new THREE.Group();
   const shell = new THREE.Group();
   const interior = new THREE.Group();
   house.add(shell, interior);
 
-  // Larger footprint, while keeping the original 1.8x house scale.
   shell.scale.setScalar(1.8);
   interior.scale.setScalar(1.8);
 
@@ -312,7 +334,7 @@ function makeKameHouse() {
     part(parent, new THREE.BoxGeometry(w, h, d), material, x, y, z);
 
   // Main dimensions: x = -2.4 to 2.4; z = -2.05 to 2.05.
-  // The floor is shared by the living room and the smaller rooms.
+  // The floor is shared by the living room and smaller rooms
   box(shell, 5.02, 0.23, 4.32, trim, 0, 0.13, 0);
   box(shell, 4.78, 0.055, 4.08, wood, 0, 0.27, 0);
   for (let i = 0; i < 27; i++) {
@@ -326,7 +348,7 @@ function makeKameHouse() {
     }
   }
 
-  // Exterior walls, with warm pink inner faces.
+  // Outside walls
   for (const x of [-2.4, 2.4]) {
     box(shell, 0.12, 2.36, 4.12, pink, x, 1.44, 0);
     box(shell, 0.014, 2.22, 3.98, insidePink,
@@ -335,65 +357,184 @@ function makeKameHouse() {
   box(shell, 4.8, 2.36, 0.12, pink, 0, 1.44, -2.05);
   box(shell, 4.62, 2.22, 0.014, insidePink, 0, 1.44, -1.982);
 
-  // Front wall is hidden temporarily when A opens the roof for a clear view.
+  // Front wall temporarily hidden when roof opens
   kameFront = new THREE.Group();
   shell.add(kameFront);
   box(kameFront, 4.8, 2.36, 0.12, pink, 0, 1.44, 2.05);
   box(kameFront, 4.62, 2.22, 0.014, insidePink, 0, 1.44, 1.982);
-  box(kameFront, 0.84, 1.68, 0.075, greenDoor, 0, 1.16, 2.13);
-  part(kameFront, new THREE.SphereGeometry(0.045, 12, 8),
-    trim, 0.29, 1.16, 2.19);
 
-  // Front windows and their cross-shaped white frames.
-  for (const x of [-1.48, 1.48]) {
-    box(kameFront, 1.02, 1.12, 0.08, white, x, 1.52, 2.14);
-    box(kameFront, 0.89, 0.99, 0.085, glass, x, 1.52, 2.19);
-    box(kameFront, 0.055, 1.04, 0.095, white, x, 1.52, 2.25);
-    box(kameFront, 0.96, 0.055, 0.095, white, x, 1.52, 2.25);
+  // Horizontal siding lines (front, sides, back)
+  for (let y = 0.5; y < 2.6; y += 0.2) {
+    box(kameFront, 4.8, 0.02, 0.02, sidingPink, 0, y, 2.12);
+    box(shell, 4.8, 0.02, 0.02, sidingPink, 0, y, -2.12);
+    for (const x of [-2.465, 2.465]) {
+      box(shell, 0.02, 0.02, 4.12, sidingPink, x, y, 0);
+    }
   }
 
-  // Exterior side windows.
+  // Front door
+  const DOOR_X = 0.95;
+  box(kameFront, 0.98, 1.78, 0.05, white, DOOR_X, 1.21, 2.10); // frame
+  box(kameFront, 0.84, 1.68, 0.075, greenDoor, DOOR_X, 1.16, 2.13);
+  part(kameFront, new THREE.SphereGeometry(0.045, 12, 8),
+    trim, DOOR_X + 0.29, 1.16, 2.19);
+
+  // Single front window on the left, with shutters
+  const WIN_X = -1.48;
+  box(kameFront, 1.02, 1.12, 0.08, white, WIN_X, 1.52, 2.14);
+  box(kameFront, 0.89, 0.99, 0.085, glass, WIN_X, 1.52, 2.19);
+  box(kameFront, 0.055, 1.04, 0.095, white, WIN_X, 1.52, 2.25);
+  box(kameFront, 0.96, 0.055, 0.095, white, WIN_X, 1.52, 2.25);
+  for (const dx of [-0.66, 0.66]) {
+    box(kameFront, 0.26, 1.12, 0.05, white, WIN_X + dx, 1.52, 2.14);
+    for (let y = 1.1; y < 1.98; y += 0.1) { // shutter slats
+      box(kameFront, 0.22, 0.02, 0.03, trim, WIN_X + dx, y, 2.175);
+    }
+  }
+
+  // Porch awning + columns over the door (hide with the front wall when the roof opens)
+  part(kameFront, new THREE.BoxGeometry(1.55, 0.1, 0.95), roofRed,
+    DOOR_X, 2.1, 2.5, 0.22, 0, 0);
+  for (const dx of [-0.63, 0.63]) {
+    part(kameFront, new THREE.CylinderGeometry(0.052, 0.052, 1.78, 10),
+      trim, DOOR_X + dx, 1.12, 2.76);
+  }
+
+  // Porch lamp (warm spotlight shining on the door)
+  const porchLight = new THREE.SpotLight(0xffd9a0, 30, 8, 0.6, 0.6, 2);
+  porchLight.position.set(DOOR_X, 1.95, 2.55);
+  porchLight.target.position.set(DOOR_X, 0.3, 2.6);
+  kameFront.add(porchLight, porchLight.target);
+
+  // Outside windows
   for (const side of [-1, 1]) {
     box(shell, 0.085, 1.10, 1.20, white, side * 2.48, 1.60, 0.38);
     box(shell, 0.09, 0.98, 1.08, glass, side * 2.54, 1.60, 0.38);
     box(shell, 0.10, 0.055, 1.12, white, side * 2.60, 1.60, 0.38);
   }
-  box(shell, 1.25, 0.13, 0.62, trim, 0, 0.16, 2.42);
+  box(shell, 1.25, 0.13, 0.62, trim, DOOR_X, 0.16, 2.42); // front step
 
-  // Roof: the red panels and both filled-in pink triangles move together.
+  // Roof
   kameRoof = new THREE.Group();
   shell.add(kameRoof);
-  const halfSpan = 2.62;
-  const rise = 1.10;
-  const roofAngle = Math.atan2(rise, halfSpan);
-  const roofLength = Math.hypot(halfSpan, rise);
+
+  // Roof shape (change ROOF_RISE for a taller/shorter roof)
+  const WALL_TOP = 2.62;     // top of the walls
+  const WALL_HALF = 2.4;     // half the house width
+  const halfSpan = 2.62;     // half the roof width (overhangs the walls)
+  const ROOF_RISE = 2.4;     // ridge height above the eaves (was 1.10)
+  const ROOF_THICK = 0.14;
+
+  const roofAngle = Math.atan2(ROOF_RISE, halfSpan);
+  const roofLength = Math.hypot(halfSpan, ROOF_RISE);
+  const thickOff = (ROOF_THICK / 2) / Math.cos(roofAngle); // center line -> top/bottom surface
+  // Eave height chosen so the underside of the roof sits right on top of the walls
+  const eaveY = WALL_TOP + thickOff - ROOF_RISE * (1 - WALL_HALF / halfSpan);
+  const ridgeY = eaveY + ROOF_RISE;
+  // Height of the roof's top surface at a given x
+  const roofTopY = (x) => eaveY + ROOF_RISE * (1 - Math.abs(x) / halfSpan) + thickOff;
+
   for (const side of [-1, 1]) {
     part(kameRoof,
-      new THREE.BoxGeometry(roofLength, 0.14, 4.56),
-      roofRed, side * halfSpan / 2, 3.16, 0,
+      new THREE.BoxGeometry(roofLength, ROOF_THICK, 4.56),
+      roofRed, side * halfSpan / 2, eaveY + ROOF_RISE / 2, 0,
       0, 0, -side * roofAngle);
   }
+
+  // Front and back gables (triangles that fill the wall up to the roof underside)
+  const gableTop = WALL_TOP + WALL_HALF * ROOF_RISE / halfSpan;
   for (const z of [-2.065, 2.065]) {
     const gable = new THREE.Shape();
-    gable.moveTo(-2.4, 2.62);
-    gable.lineTo(2.4, 2.62);
-    gable.lineTo(0, 3.72);
+    gable.moveTo(-WALL_HALF, WALL_TOP);
+    gable.lineTo(WALL_HALF, WALL_TOP);
+    gable.lineTo(0, gableTop);
     gable.closePath();
     const gableMat = pink.clone();
     gableMat.side = THREE.DoubleSide;
     part(kameRoof, new THREE.ShapeGeometry(gable), gableMat, 0, 0, z);
   }
-  box(kameRoof, 0.17, 0.13, 4.58, roofRed, 0, 3.72, 0);
-  box(kameRoof, 1.55, 0.14, 0.95, roofRed, 0, 2.08, 2.48);
-  for (const x of [-0.63, 0.63]) {
-    part(shell, new THREE.CylinderGeometry(0.052, 0.052, 1.70, 10),
-      trim, x, 1.08, 2.76);
+  box(kameRoof, 0.17, 0.13, 4.58, roofRed, 0, ridgeY, 0); // ridge cap
+
+  // Upstairs room
+  const dormerProfile = new THREE.Shape();
+  dormerProfile.moveTo(-0.55, 0);
+  dormerProfile.lineTo(0.55, 0);
+  dormerProfile.lineTo(0.55, 0.7);
+  dormerProfile.lineTo(0, 1.0);
+  dormerProfile.lineTo(-0.55, 0.7);
+  dormerProfile.closePath();
+
+  const DORMER_Z = 0.9;      // toward the front of the house
+  const DORMER_FRONT = -1.9; // face with the window (points out the left side)
+  // Sits just below the roof surface at its front face
+  const DORMER_BASE = roofTopY(DORMER_FRONT) - 0.15;
+  const DORMER_BACK = -halfSpan * (1 - (DORMER_BASE + 1.05 - eaveY - thickOff) / ROOF_RISE);
+  const dormerLen = DORMER_BACK - DORMER_FRONT;
+
+  // Rotating -90° around Y makes the extrusion run toward -x
+  part(kameRoof,
+    new THREE.ExtrudeGeometry(dormerProfile, { depth: dormerLen, bevelEnabled: false }),
+    pink, DORMER_BACK, DORMER_BASE, DORMER_Z, 0, -Math.PI / 2, 0);
+
+  // Dormer's roof
+  const dRise = 0.3;
+  const dHalf = 0.55;
+  const dAngle = Math.atan2(dRise, dHalf);
+  const dLen = Math.hypot(dRise, dHalf) + 0.12;
+  for (const s of [-1, 1]) {
+    part(kameRoof, new THREE.BoxGeometry(dormerLen + 0.15, 0.08, dLen), roofRed,
+      (DORMER_FRONT + DORMER_BACK) / 2 - 0.075, DORMER_BASE + 0.89,
+      DORMER_Z + s * dHalf / 2, s * dAngle, 0, 0);
   }
 
-  // REFERENCE LAYOUT: kitchen on back-left, living room in the middle,
-  // closet on the back wall, and separate rooms on the back-right.
+  // Dormer window
+  const dwX = DORMER_FRONT - 0.03;
+  const dwY = DORMER_BASE + 0.48;
+  box(kameRoof, 0.06, 0.44, 0.56, white, dwX, dwY, DORMER_Z);
+  box(kameRoof, 0.065, 0.34, 0.46, glass, dwX - 0.01, dwY, DORMER_Z);
+  box(kameRoof, 0.07, 0.36, 0.035, white, dwX - 0.02, dwY, DORMER_Z);
+  box(kameRoof, 0.07, 0.035, 0.48, white, dwX - 0.02, dwY, DORMER_Z);
 
-  // Kitchen counter, upper cabinets, and big window above the sink.
+  // Weathervane/compass on ridge
+  kameVane = new THREE.Group();
+  kameVane.position.set(0, ridgeY + 0.065, 1.55); // on top of the ridge cap
+  kameRoof.add(kameVane);
+
+  // Finial base (bell-shaped profile spun around Y)
+  const finialProfile = [
+    [0, 0], [0.14, 0], [0.14, 0.035], [0.08, 0.07],
+    [0.1, 0.12], [0.05, 0.18], [0.035, 0.24], [0, 0.26]
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  part(kameVane, new THREE.LatheGeometry(finialProfile, 20), vaneMetal, 0, 0, 0);
+
+  // Pole, compass cross arms, top ball
+  part(kameVane, new THREE.CylinderGeometry(0.018, 0.022, 0.95, 8), vaneMetal, 0, 0.7, 0);
+  part(kameVane, new THREE.CylinderGeometry(0.012, 0.012, 0.7, 6), vaneMetal,
+    0, 0.62, 0, 0, 0, Math.PI / 2);
+  part(kameVane, new THREE.CylinderGeometry(0.012, 0.012, 0.7, 6), vaneMetal,
+    0, 0.62, 0, Math.PI / 2, 0, 0);
+  part(kameVane, new THREE.SphereGeometry(0.045, 12, 8), vaneMetal, 0, 1.18, 0);
+
+  // Spinning arrow (extruded shape)
+  kameVaneSpinner = new THREE.Group();
+  kameVaneSpinner.position.y = 0.95;
+  kameVane.add(kameVaneSpinner);
+
+  const arrowShape = new THREE.Shape();
+  const arrowPts = [
+    [0.42, 0], [0.22, 0.09], [0.22, 0.025], [-0.3, 0.025],
+    [-0.42, 0.13], [-0.5, 0.13], [-0.4, 0], [-0.5, -0.13],
+    [-0.42, -0.13], [-0.3, -0.025], [0.22, -0.025], [0.22, -0.09]
+  ];
+  arrowShape.moveTo(...arrowPts[0]);
+  for (const p of arrowPts.slice(1)) arrowShape.lineTo(...p);
+  arrowShape.closePath();
+
+  const arrowGeo = new THREE.ExtrudeGeometry(arrowShape, { depth: 0.025, bevelEnabled: false });
+  arrowGeo.translate(0, 0, -0.0125); // center the thickness on the pole
+  part(kameVaneSpinner, arrowGeo, vaneMetal, 0, 0, 0);
+
+  // Kitchen counter, upper cabinets, and window above sink
   box(interior, 1.88, 0.72, 0.48, darkWood, -1.34, 0.68, -1.72);
   box(interior, 1.98, 0.075, 0.58, stone, -1.34, 1.08, -1.72);
   for (const x of [-2.04, -1.56, -1.08, -0.60]) {
@@ -417,12 +558,12 @@ function makeKameHouse() {
     }
   }
 
-  // Tall green refrigerator beside the kitchen.
+  // Refrigerator beside kitchen
   box(interior, 0.58, 1.66, 0.62, fridgeGreen, -0.08, 1.16, -1.68);
   box(interior, 0.035, 0.40, 0.04, steel, 0.24, 1.40, -1.34);
   box(interior, 0.54, 0.035, 0.04, darkWood, -0.08, 1.53, -1.35);
 
-  // White double closet doors on the back wall.
+  // Closet doors on back wall
   box(interior, 1.10, 1.76, 0.06, white, 1.00, 1.30, -1.93);
   box(interior, 0.035, 1.76, 0.08, trim, 1.00, 1.30, -1.88);
   for (const x of [0.73, 1.27]) {
@@ -431,40 +572,35 @@ function makeKameHouse() {
     }
   }
 
-  // Small rooms behind the living room, with actual dividing walls.
-  // Two openings are intentionally left clear for access.
+  // Small rooms behind living room
   box(interior, 0.10, 2.10, 0.48, insidePink, 1.62, 1.36, -1.75);
   box(interior, 0.10, 2.10, 0.37, insidePink, 1.62, 1.36, -0.65);
-  // Lintel bridges the opening without blocking the doorway.
   box(interior, 0.12, 0.27, 0.75, insidePink, 1.62, 2.275, -1.15);
   box(interior, 0.82, 2.10, 0.10, insidePink, 2.00, 1.36, -0.46);
-  // Trim the doorway edges.
+  // Trim doorway edges
   for (const z of [-1.50, -0.84]) {
     box(interior, 0.15, 1.80, 0.055, white, 1.62, 1.23, z);
   }
-  // First room on right: bedroom
+  // Bedroom
   box(interior, 0.72, 0.18, 1.16, darkWood, 2.00, 0.44, -1.20);
   box(interior, 0.66, 0.15, 1.06, white, 2.00, 0.59, -1.20);
   box(interior, 0.64, 0.045, 0.62, tvBlue, 2.00, 0.69, -0.98);
   box(interior, 0.48, 0.09, 0.23, white, 2.00, 0.72, -1.62);
   box(interior, 0.74, 0.55, 0.10, darkWood, 2.00, 0.70, -1.82);
-  // Slim wall shelf leaves floor clear.
   box(interior, 0.35, 0.045, 0.18, woodAlt, 2.06, 1.10, -0.53);
 
-  // Side room on the right, separated by a wall with a doorway gap.
+  // Side room
   box(interior, 0.10, 2.10, 0.65, insidePink, 1.52, 1.36, 0.40);
   box(interior, 0.10, 2.10, 0.28, insidePink, 1.52, 1.36, 1.88);
   box(interior, 0.12, 0.27, 0.72, insidePink, 1.52, 2.275, 1.20);
   for (const z of [0.76, 1.74]) {
     box(interior, 0.15, 1.80, 0.055, white, 1.52, 1.23, z);
   }
-  // Solid back wall for the staircase room, closing off the rear opening.
-  // This wall is part of Kame House only; the doorway on the left stays open.
+  // Back wall for staircase room
   box(interior, 0.88, 2.10, 0.10, insidePink, 1.98, 1.36, 0.03);
   box(interior, 0.88, 0.075, 0.12, white, 1.98, 0.39, 0.03);
 
-  // Second room on the right: neat wooden staircase instead of bathroom.
-  // Steps climb from the front of the room toward the back wall.
+  // Second room on right
   const stairWood = mat(0xb47a4e);
   const stairDark = mat(0x6e4931);
   const stairRail = mat(0xf7eee2);
@@ -475,25 +611,25 @@ function makeKameHouse() {
   for (let i = 0; i < 8; i++) {
     const z = stairStartZ - i * stepDepth;
     const top = 0.34 + (i + 1) * stepRise;
-    // Solid riser and separate wood tread, for clearly visible stairs.
+    // Solid riser and separate wood tread
     box(interior, stairWidth, (i + 1) * stepRise, stepDepth,
       stairWood, 2.02, 0.34 + (i + 1) * stepRise / 2, z);
     box(interior, stairWidth + 0.04, 0.055, stepDepth + 0.025,
       woodAlt, 2.02, top + 0.027, z);
-    // Dark nosing on each step.
+    // Dark nosing on each step
     box(interior, stairWidth + 0.045, 0.025, 0.025,
       stairDark, 2.02, top + 0.055, z + stepDepth / 2);
   }
-  // Small upper landing (visual staircase; no second floor is modeled).
+  // Small upper landing
   box(interior, 0.72, 0.12, 0.25, stairWood, 2.02, 1.92, 0.48);
-  // Rail posts along the open side of the stairs.
+  // Rail
   for (const i of [0, 2, 4, 6, 7]) {
     const z = stairStartZ - i * stepDepth;
     const top = 0.34 + (i + 1) * stepRise;
     box(interior, 0.045, 0.55, 0.045, stairRail,
       1.65, top + 0.30, z);
   }
-  // Sloping handrail follows the stairs upward.
+  // Handrail
   const railStart = new THREE.Vector3(1.65, 1.05, 1.78);
   const railEnd = new THREE.Vector3(1.65, 2.38, 0.66);
   const railVec = railEnd.clone().sub(railStart);
@@ -506,11 +642,10 @@ function makeKameHouse() {
   );
   interior.add(handrail);
 
-  // Large light-gray rug in the middle of the living room.
+  // Living room rug
   box(interior, 2.48, 0.025, 1.72, rug, -0.34, 0.335, 0.56);
 
-  // Red L-shaped couch, low like the reference.
-  // Main long section follows the back edge of the rug.
+  // Couch
   box(interior, 2.14, 0.25, 0.43, red, -0.47, 0.49, -0.05);
   box(interior, 0.44, 0.25, 1.32, red, 0.38, 0.49, 0.40);
   box(interior, 2.14, 0.32, 0.14, redLight, -0.47, 0.76, -0.24);
@@ -522,7 +657,7 @@ function makeKameHouse() {
     box(interior, 0.36, 0.12, 0.39, redLight, 0.37, 0.66, z);
   }
 
-  // Simple black square coffee table.
+  // Coffee table
   box(interior, 0.59, 0.06, 0.59, black, -0.55, 0.56, 0.82);
   for (const x of [-0.78, -0.32]) {
     for (const z of [0.59, 1.05]) {
@@ -530,7 +665,7 @@ function makeKameHouse() {
     }
   }
 
-  // Living room TV on the left wall, facing the sofa.
+  // Living room TV
   box(interior, 0.12, 0.82, 1.16, black, -2.18, 1.50, 0.80);
   box(interior, 0.018, 0.72, 1.06, tvBlue, -2.105, 1.50, 0.80);
   box(interior, 0.34, 0.40, 1.26, darkWood, -2.13, 0.54, 0.80);
@@ -538,7 +673,7 @@ function makeKameHouse() {
     box(interior, 0.025, 0.27, 0.50, woodAlt, -1.94, 0.54, z);
   }
 
-  // Indoor plant near the kitchen.
+  // Indoor plant
   part(interior, new THREE.CylinderGeometry(0.18, 0.13, 0.32, 12),
     potBrown, -2.10, 0.49, -0.77);
   for (let i = 0; i < 11; i++) {
@@ -561,9 +696,9 @@ function makeKameHouse() {
     box(interior, 0.035, 0.075, 3.90, white, x, 0.39, 0);
     box(interior, 0.045, 0.055, 3.90, white, x, 2.57, 0);
   }
-  // Backsplash above the kitchen counter.
+  // Backsplash above the kitchen counter
   box(interior, 1.86, 0.24, 0.025, white, -1.34, 1.24, -1.94);
-  // Kitchen upper cabinets either side of the window.
+  // Kitchen upper cabinets
   box(interior, 0.34, 0.55, 0.26, darkWood, -2.16, 2.04, -1.78);
   box(interior, 0.34, 0.55, 0.26, darkWood, -0.55, 2.04, -1.78);
   for (const x of [-2.16, -0.55]) {
@@ -606,15 +741,17 @@ function lowestGroundUnder(cx, cz, xs, zs) {
 }
 
 const HOUSE_X = 0;
-const HOUSE_Z = -0.45;
+const HOUSE_Z = -0.45 * WORLD_SCALE;
 
-const FOUNDATION_BOTTOM = 0.045 * 1.8;
+// Foundation box
+const FOUNDATION_BOTTOM = 0.015 * 1.8;
 
+// Sample points cover the real footprint
 const groundY = lowestGroundUnder(
   HOUSE_X,
   HOUSE_Z,
-  [-2.85, 0, 2.85],
-  [-2.6, 0, 2.6]
+  [-4.52, 0, 4.52],
+  [-3.89, 0, 3.89, 4.91]
 );
 
 kameHouse.position.set(
@@ -624,6 +761,108 @@ kameHouse.position.set(
 );
 
 scene.add(kameHouse);
+
+// KAME HOUSE sign + compass letters
+const FONT_URL =
+  "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/fonts/helvetiker_regular.typeface.json";
+
+new FontLoader().load(FONT_URL, (font) => {
+  function makeText(str, size, depth, material) {
+    const geo = new TextGeometry(str, {
+      font, size, depth,
+      curveSegments: 4,
+      bevelEnabled: true,
+      bevelThickness: depth * 0.25,
+      bevelSize: size * 0.03,
+      bevelSegments: 1
+    });
+    geo.center(); // so positions refer to the middle of the word
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  // Sign on the front roof
+  const SIGN_TILT = 0.35; // radians ~20° counterclockwise 
+  const kameWord = makeText("KAME", 0.4, 0.04, signRed);
+  kameWord.position.set(-0.2, 3.8, 2.1);
+  kameWord.rotation.z = SIGN_TILT;
+  const houseWord = makeText("HOUSE", 0.4, 0.04, signRed);
+  houseWord.position.set(0.1, 3.35, 2.1);
+  houseWord.rotation.z = SIGN_TILT;
+  kameRoof.add(kameWord, houseWord);
+
+  // N E S W at ends of the compass arms
+  for (const [letter, x, z, ry] of [
+    ["N", 0, -0.44, Math.PI],
+    ["S", 0, 0.44, 0],
+    ["E", 0.44, 0, Math.PI / 2],
+    ["W", -0.44, 0, -Math.PI / 2]
+  ]) {
+    const l = makeText(letter, 0.12, 0.02, vaneMetal);
+    l.position.set(x, 0.66, z);
+    l.rotation.y = ry;
+    kameVane.add(l);
+  }
+});
+
+// Shoreline boulders + bushes (additional objects)
+const rockMat = new THREE.MeshStandardMaterial({color: 0xd99a6c, roughness: 0.95, flatShading: true});
+const bushMat = new THREE.MeshStandardMaterial({color: 0x3f8f3f, roughness: 0.9, flatShading: true});
+
+// Boulder (icosahedron with each corner pushed in/out a random-looking amount)
+function makeRock(size, seed) {
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    // Hash rounded position so shared corners move together
+    const key = Math.round(v.x * 100) * 12.9898 + Math.round(v.y * 100) * 78.233 + Math.round(v.z * 100) * 37.719;
+    const h = Math.sin(key + seed) * 43758.5453;
+    v.multiplyScalar(0.8 + 0.35 * (h - Math.floor(h)));
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+
+  geo.computeVertexNormals();
+  const rock = new THREE.Mesh(geo, rockMat);
+  rock.scale.set(size * 1.3, size * 0.7, size);
+  return rock;
+}
+
+for (const i of [1, 4, 8, 11, 15, 19, 23, 26]) {
+  const p = ringPoint(3, i).multiplyScalar(WORLD_SCALE * 1.02);
+  const rock = makeRock(0.9 + (i % 3) * 0.35, i);
+  rock.position.set(p.x, 0.1, p.z);
+  rock.rotation.y = i;
+  scene.add(rock);
+}
+
+// Bush
+function makeBush(size) {
+  const bush = new THREE.Group();
+  for (const [x, y, z, r] of [
+    [0, 0.45, 0, 0.55],
+    [0.45, 0.3, 0.1, 0.42],
+    [-0.4, 0.3, -0.1, 0.45],
+    [0.1, 0.3, 0.42, 0.4],
+    [-0.1, 0.28, -0.42, 0.38]
+  ]) {
+    const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), bushMat);
+    puff.position.set(x, y, z);
+    bush.add(puff);
+  }
+  bush.scale.setScalar(size);
+  return bush;
+}
+
+for (const [x, z, size] of [[-5.6, -5.8, 1.8], [5.6, -5.6, 1.6], [5.4, 3.0, 1.4]]) {
+  const bush = makeBush(size);
+  bush.position.set(x, groundHeightAt(x, z) - 0.1, z);
+  scene.add(bush);
+}
 
 // Beach Chair (Jeremy's polygonal mesh object)
 function makeBeachChair() {
@@ -778,10 +1017,25 @@ function makeBeachChair() {
 // Position chair beside house
 const beachChair = makeBeachChair();
 
-beachChair.scale.setScalar(0.40);
+beachChair.scale.setScalar(0.40 * WORLD_SCALE);
 beachChair.rotation.y = 0.25;
 
-beachChair.position.set(-2.60, groundHeightAt(4.85, 1.05) + 0.08, 1.05);
+const CHAIR_X = -2.60 * WORLD_SCALE;
+const CHAIR_Z = 1.05 * WORLD_SCALE;
+// Find how far the chair's lowest point sits below its origin
+beachChair.position.set(CHAIR_X, 0, CHAIR_Z);
+beachChair.updateMatrixWorld();
+const chairBottom = new THREE.Box3().setFromObject(beachChair).min.y;
+
+// Lowest ground under the chair's footprint
+const chairGround = lowestGroundUnder(
+  CHAIR_X, CHAIR_Z,
+  [-0.8, 0, 0.8],   // across the chair's width
+  [-1.1, 0, 1.6]    // from the backrest to the front legs
+);
+
+// Put the leg bottoms on that ground
+beachChair.position.y = chairGround - chairBottom;
 
 scene.add(beachChair);
 
@@ -792,25 +1046,193 @@ const waterGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 200, 200);
 waterGeo.rotateX(-Math.PI / 2);
 const waterBase = waterGeo.attributes.position.array.slice();
 
+// Smooth, semi-transparent water (low roughness gives sun glints on the wave facets)
 const water = new THREE.Mesh(waterGeo, new THREE.MeshStandardMaterial({
-    color: 0x1e88d6,
+    color: 0x2a90dc,
     flatShading: true,
     transparent: true,
     opacity: 0.82,
-    roughness: 0.35,
-    metalness: 0.1
+    roughness: 0.18,
+    metalness: 0.05
   })
 );
 
+water.scale.setScalar(WORLD_SCALE); // scales the size AND the wave height
 scene.add(water);
 
 // Seafloor
 const seafloor = new THREE.Mesh(new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE), new THREE.MeshBasicMaterial({color: 0x0b3d6b}));
 
 seafloor.rotation.x = -Math.PI / 2;
-seafloor.position.y = -3;
+seafloor.position.y = -3 * WORLD_SCALE;
+seafloor.scale.setScalar(WORLD_SCALE);
 
 scene.add(seafloor);
+
+// Flying Nimbus (press A to start / stop)
+//   nimbus
+//     ├─ core  (LatheGeometry: SURFACE OF REVOLUTION, a lumpy profile spun around Y)
+//     ├─ puffs (big soft lumps on top + a ring of small lumps around the rim)
+//     └─ glow  (yellow point light that lights up whatever it flies past)
+//   + a long tapering streak (custom tube mesh) that follows the flight path behind it
+const nimbusMat = new THREE.MeshStandardMaterial({
+  color: 0xf5d36e, emissive: 0xffb02e, emissiveIntensity: 0.18,
+  roughness: 0.7, side: THREE.DoubleSide
+});
+
+function makeNimbus() {
+  const nimbus = new THREE.Group();
+
+  // Core
+  const profile = [];
+  const STEPS = 14;
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS;
+    const r = Math.pow(Math.sin(Math.PI * t), 0.7) * (1 + 0.08 * Math.sin(t * Math.PI * 6));
+    profile.push(new THREE.Vector2(r, -0.35 + 0.7 * t));
+  }
+  const core = new THREE.Mesh(new THREE.LatheGeometry(profile, 24), nimbusMat);
+  core.scale.set(1, 0.8, 1.35); // stretch front-to-back (forward is +z)
+  nimbus.add(core);
+
+  // Puffs
+  const addPuff = (x, y, z, r) => {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), nimbusMat);
+    puff.position.set(x, y, z);
+    puff.scale.y = 0.85; // slightly squashed = softer, cloudier
+    nimbus.add(puff);
+  };
+  addPuff(0, 0.38, 0.15, 0.62);    // big center puff
+  addPuff(0.5, 0.25, 0.35, 0.48);
+  addPuff(-0.5, 0.25, 0.35, 0.48);
+  addPuff(0.45, 0.3, -0.3, 0.5);
+  addPuff(-0.45, 0.3, -0.3, 0.5);
+  addPuff(0, 0.35, -0.5, 0.5);
+  addPuff(0, 0.15, 0.85, 0.45);    // front
+  addPuff(0, 0.08, -1.05, 0.5);    // back, where the streak comes out
+
+  // Small bumps around the rim
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * Math.PI * 2;
+    addPuff(Math.cos(a) * 0.85, -0.02, Math.sin(a) * 1.1, 0.28);
+  }
+
+  const glow = new THREE.PointLight(0xffc24d, 120, 40, 2);
+  glow.position.y = 0.3;
+  nimbus.add(glow);
+
+  nimbus.scale.setScalar(1.4);
+  return nimbus;
+}
+
+const nimbus = makeNimbus();
+scene.add(nimbus);
+
+// Flight path (a figure eight)
+const flightPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(2, 4, 11),      // parked in front of the door
+  new THREE.Vector3(18, 6, 13),
+  new THREE.Vector3(26, 10, 0),
+  new THREE.Vector3(14, 13, -13),
+  new THREE.Vector3(0, 16, -2),     // over the house
+  new THREE.Vector3(-13, 13, 11),
+  new THREE.Vector3(-26, 10, 4),
+  new THREE.Vector3(-22, 9, -10),
+  new THREE.Vector3(-9, 12, -15),
+  new THREE.Vector3(-1, 15, 3)      // over the house again (clears the taller roof), then dive
+], true, "centripetal");
+
+const LOOP_SECONDS = 22;
+let nimbusFlying = false;
+let flightU = 0.30; // 0..1 = how far around the loop
+let tailGrow = 0;
+
+const ahead = new THREE.Vector3();
+function placeNimbus(u) {
+  const p = flightPath.getPointAt(u);
+  const forward = flightPath.getTangentAt(u);
+  nimbus.position.copy(p);
+  nimbus.lookAt(ahead.copy(p).add(forward)); // +z faces the direction of travel
+
+  // Bank (roll) into turns
+  const nextForward = flightPath.getTangentAt((u + 0.01) % 1);
+  const turn = new THREE.Vector3().crossVectors(forward, nextForward).y;
+  nimbus.rotateZ(THREE.MathUtils.clamp(-turn * 12, -0.5, 0.5));
+}
+placeNimbus(flightU);
+
+// Trail (long tube that gets thinner toward the end, laid along the flight
+// path behind nimbus)
+const TAIL_SAMPLES = 70;    // rings along the streak
+const TAIL_SIDES = 10;      // vertices around each ring
+const TAIL_STEP = 0.45;     // world units between rings
+const TAIL_START = 1.3;     // starts inside the back of the cloud
+const TAIL_RADIUS = 0.6;    // thickness where it leaves the cloud
+const pathLength = flightPath.getLength();
+
+const tailGeo = new THREE.BufferGeometry();
+const tailPositions = new Float32Array(TAIL_SAMPLES * TAIL_SIDES * 3);
+tailGeo.setAttribute("position", new THREE.BufferAttribute(tailPositions, 3));
+
+const tailIndex = [];
+for (let i = 0; i < TAIL_SAMPLES - 1; i++) {
+  for (let j = 0; j < TAIL_SIDES; j++) {
+    const a = i * TAIL_SIDES + j;
+    const b = i * TAIL_SIDES + (j + 1) % TAIL_SIDES;
+    const c = a + TAIL_SIDES;
+    const d = b + TAIL_SIDES;
+    tailIndex.push(a, c, b, b, c, d);
+  }
+}
+tailGeo.setIndex(tailIndex);
+
+const tail = new THREE.Mesh(tailGeo, nimbusMat);
+tail.frustumCulled = false; // its shape changes every frame
+scene.add(tail);
+
+const UP = new THREE.Vector3(0, 1, 0);
+const tailSide = new THREE.Vector3();
+const tailUp = new THREE.Vector3();
+
+function updateTail() {
+  for (let i = 0; i < TAIL_SAMPLES; i++) {
+    // Walk backward along path from nimbus
+    const back = (TAIL_START + i * TAIL_STEP * tailGrow) / pathLength;
+    const u = ((flightU - back) % 1 + 1) % 1;
+    const center = flightPath.getPointAt(u);
+    const forward = flightPath.getTangentAt(u);
+
+    // Two directions perpendicular to the path to build ring
+    tailSide.crossVectors(forward, UP).normalize();
+    tailUp.crossVectors(tailSide, forward).normalize();
+
+    // Taper from thick to thin
+    const f = 1 - i / (TAIL_SAMPLES - 1);
+    const r = TAIL_RADIUS * Math.pow(f, 0.9) + 0.03;
+
+    for (let j = 0; j < TAIL_SIDES; j++) {
+      const a = j / TAIL_SIDES * Math.PI * 2;
+      const k = (i * TAIL_SIDES + j) * 3;
+      tailPositions[k]     = center.x + (tailSide.x * Math.cos(a) + tailUp.x * Math.sin(a)) * r;
+      tailPositions[k + 1] = center.y + (tailSide.y * Math.cos(a) + tailUp.y * Math.sin(a)) * r;
+      tailPositions[k + 2] = center.z + (tailSide.z * Math.cos(a) + tailUp.z * Math.sin(a)) * r;
+    }
+  }
+  tailGeo.attributes.position.needsUpdate = true;
+  tailGeo.computeVertexNormals();
+}
+updateTail(); // the streak is visible even while parked
+tail.visible = false;
+
+// Shadows
+scene.traverse((obj) => {
+  if (obj.isMesh) {
+    obj.castShadow = true;
+    obj.receiveShadow = true;
+  }
+});
+water.castShadow = false;
+seafloor.castShadow = false;
 
 // Animated waves
 function updateWater(t) {
@@ -846,19 +1268,42 @@ function onResize() {
 
 window.addEventListener("resize", onResize);
 
-// Kame House roof control: press A to open or close.
+// Keys
+//   A = start / stop the Flying Nimbus
+//   O = open / close the roof to see the interior
 window.addEventListener("keydown", (event) => {
-  if (event.code === "KeyA" && !event.repeat) houseOpen = !houseOpen;
+  if (event.repeat) return;
+  if (event.code === "KeyA") {
+    nimbusFlying = !nimbusFlying;
+    tail.visible = nimbusFlying; // streak only while moving
+    if (!nimbusFlying) tailGrow = 0;
+}
+  if (event.code === "KeyO") houseOpen = !houseOpen;
 });
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const delta = clock.getDelta();
+  const delta = Math.min(clock.getDelta(), 0.05); // avoid big jumps after a tab switch
+  const t = clock.elapsedTime;
+
+  // Roof open / close
   const target = houseOpen ? 4.5 : 0;
   roofHeight += (target - roofHeight) * Math.min(1, delta * 2.3);
   kameRoof.position.y = roofHeight;
   kameFront.visible = roofHeight < 0.3;
-  updateWater(clock.elapsedTime);
+
+  // Arrow swings in the wind
+  kameVaneSpinner.rotation.y = 0.6 * Math.sin(t * 0.35) + 0.25 * Math.sin(t * 1.3);
+
+  // Flying Nimbus (moves while flying, A toggles)
+  if (nimbusFlying) {
+    flightU = (flightU + delta / LOOP_SECONDS) % 1;
+    placeNimbus(flightU);
+    tailGrow = Math.min(1, tailGrow + delta * 0.5);
+    updateTail();
+  }
+
+  updateWater(t);
   controls.update();
   renderer.render(scene, camera);
 });
